@@ -2,6 +2,11 @@
 import json
 from collections import Counter
 
+from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+
+
 import torch
 from torch import nn
 
@@ -55,21 +60,24 @@ val.standardize(mean, std)
 woo_val = val.subset_pitcher(EVAL_PITCHER)
 print(f"Woo val pitches: {len(woo_val)}")
 
+
 model = PitchModel(n_classes, n_pitchers, n_batters)
+model.load_state_dict(torch.load("pitch_predictor.pth", weights_only=True))
 
 
-#%%
-loss_fn = nn.CrossEntropyLoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+def train():
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
-epochs = 10
-for t in range(epochs):
-    print(f"Epoch {t+1}\n-------------------------------")
-    train_loop(train, model, loss_fn, optimizer)
-    test_loop(val, model, loss_fn, split="Val (all)")
-    test_loop(woo_val, model, loss_fn, split="Val (Woo)")
-    print()
-print("Done!")
+    epochs = 10
+    for t in range(epochs):
+        print(f"Epoch {t+1}\n-------------------------------")
+        train_loop(train, model, loss_fn, optimizer)
+        test_loop(val, model, loss_fn, split="Val (all)")
+        test_loop(woo_val, model, loss_fn, split="Val (Woo)")
+        print()
+    print("Done!")
+
 
 #%%
 vocabs = json.loads((DATA_ROOT / "meta" / "vocabs.json").read_text())
@@ -78,8 +86,44 @@ CALL_TO_ID = vocabs["pitch_call"]
 ID_TO_TYPE = {int(v): k for k, v in TYPE_TO_ID.items()}
 
 
+class AtBat(BaseModel):
+    game_date:int
+    at_bat_number: int
+    pitch_number:int
+    pitcher_id: int
+    batter_id: int
+    batter_avg: float
+    batter_obp: float
+    batter_slg: float
+    pitch_calls_so_far: list[int]
+    pitch_types_so_far: list[int]
+    outs: int
+    on_1b: int
+    on_2b: int
+    on_3b: int
+    offense_score: int
+    defense_score: int
+    inning: int
+    inning_half: int
+    p_throws:int
+    stand: int
 
-# 1-2 putaway after three fastballs: pitcher ahead, batter protecting.
-example = {"game_date":20250928,"at_bat_number":76,"pitch_number":5,"pitcher_id":686826,"batter_id":669200,"batter_avg":0.204,"batter_obp":0.278,"batter_slg":0.245,"pitch_calls_so_far":[1,4,0,3],"pitch_types_so_far":[2,2,6,6],"outs":2,"on_1b":1,"on_2b":1,"on_3b":0,"offense_score":12,"defense_score":2,"inning":8,"inning_half":1,"p_throws":0,"stand":0,"pitch_type":1,"outcome_type":0}
+app = FastAPI()
 
-predict_situation(example, vocabs, TYPE_TO_ID, CALL_TO_ID, pitcher_to_idx, unk_pitcher, batter_to_idx, unk_batter, mean, std, ID_TO_TYPE, model)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
+
+
+@app.post("/predict/")
+def read_item(at_bat: AtBat):
+    return predict_situation(at_bat.model_dump(), vocabs, TYPE_TO_ID, CALL_TO_ID, pitcher_to_idx, unk_pitcher, batter_to_idx, unk_batter, mean, std, ID_TO_TYPE, model)
+

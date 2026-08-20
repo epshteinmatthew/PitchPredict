@@ -22,11 +22,17 @@ class PitchModel(nn.Module):
         self.on_3b_embed = nn.Embedding(num_embeddings=2, embedding_dim=2)
         self.stand_embed = nn.Embedding(num_embeddings=2, embedding_dim=2)
 
-        self.last_call_embed = nn.Embedding(num_embeddings=17, embedding_dim=4, padding_idx=PAD_CALL)
-        self.last_type_embed = nn.Embedding(num_embeddings=19, embedding_dim=4, padding_idx=PAD_TYPE)
+        self.last_call_embed = nn.Embedding(num_embeddings=17, embedding_dim=8, padding_idx=PAD_CALL)
+        self.last_type_embed = nn.Embedding(num_embeddings=19, embedding_dim=8, padding_idx=PAD_TYPE)
+
+        self.last_call2_embed = nn.Embedding(num_embeddings=17, embedding_dim=8, padding_idx=PAD_CALL)
+        self.last_type2_embed = nn.Embedding(num_embeddings=19, embedding_dim=8, padding_idx=PAD_TYPE)
+
+        self.last_call3_embed = nn.Embedding(num_embeddings=17, embedding_dim=8, padding_idx=PAD_CALL)
+        self.last_type3_embed = nn.Embedding(num_embeddings=19, embedding_dim=8, padding_idx=PAD_TYPE)
 
         # 10 numeric + pitcher 16 + 7 context*2 + last_call 4 + last_type 4
-        total_dims = 10 + 16 + 16 + 2 * 7 + 4 + 4
+        total_dims = 10 + 16 + 16 + 2 * 7 + 2*(4 + 4 + 4 + 4 + 4 + 4)
 
         self.reduce_dims = nn.Linear(total_dims, 64)
         self.linear_relu_stack = nn.Sequential(
@@ -36,6 +42,7 @@ class PitchModel(nn.Module):
             nn.Dropout(0.1),
         )
         self.output_dims = nn.Linear(32, n_classes)
+
 
     def forward(self, x):
         emb_pitcher = self.pitcher_embed(x["pitcher_idx"])
@@ -49,6 +56,11 @@ class PitchModel(nn.Module):
         emb_stand = self.stand_embed(x["context"][:, 6])
         emb_last_call = self.last_call_embed(x["last_call"])
         emb_last_type = self.last_type_embed(x["last_type"])
+        emb_last_call2 = self.last_call2_embed(x["last_call2"])
+        emb_last_type2 = self.last_type2_embed(x["last_type2"])
+        emb_last_call3 = self.last_call3_embed(x["last_call3"])
+        emb_last_type3 = self.last_type3_embed(x["last_type3"])
+
 
         x = torch.cat([
             x["numeric"],
@@ -63,9 +75,11 @@ class PitchModel(nn.Module):
             emb_stand,
             emb_last_call,
             emb_last_type,
+            emb_last_call2,
+            emb_last_type2,
+            emb_last_call3,
+            emb_last_type3,
         ], dim=1)
         x = self.reduce_dims(x)
         x = self.linear_relu_stack(x)
         return self.output_dims(x)
-
-

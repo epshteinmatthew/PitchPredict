@@ -53,7 +53,11 @@ def parse_pitch_file(path):
     ]
     last_call = calls[-1] if calls else PAD_CALL
     last_type = types[-1] if types else PAD_TYPE
-    return numeric, context, last_call, last_type, item["pitcher_id"], item["batter_id"], label
+    last_call2 = calls[-2] if len(calls) > 1 else PAD_CALL
+    last_type2 = types[-2] if len(types) > 1 else PAD_TYPE
+    last_call3 = calls[-3] if len(calls) > 2 else PAD_CALL
+    last_type3 = types[-3] if len(types) > 2 else PAD_TYPE
+    return numeric, context, last_call, last_type, last_call2, last_type2, last_call3, last_type3, item["pitcher_id"], item["batter_id"], label
 
 
 class PitchesDataset(Dataset):
@@ -74,18 +78,22 @@ class PitchesDataset(Dataset):
 
     def _load_json(self, root):
         paths = list(root.glob("*.json"))
-        numeric, context, last_call, last_type, pitcher_mlbam, batter_mlbam, labels = (
-            [], [], [], [], [], [], []
+        numeric, context, last_call, last_type, last_call2, last_type2, last_call3, last_type3, pitcher_mlbam, batter_mlbam, labels = (
+            [], [], [], [], [], [], [], [], [], [], []
         )
         with ThreadPoolExecutor(max_workers=8) as pool:
             for i, row in enumerate(pool.map(parse_pitch_file, paths, chunksize=256)):
                 if i and i % 50000 == 0:
                     print(f"  loaded {i}/{len(paths)}")
-                n, c, lc, lt, pmlbam, bmlbam, label = row
+                n, c, lc, lt, lc2, lt2, lc3, lt3, pmlbam, bmlbam, label = row
                 numeric.append(n)
                 context.append(c)
                 last_call.append(lc)
                 last_type.append(lt)
+                last_call2.append(lc2)
+                last_type2.append(lt2)
+                last_call3.append(lc3)
+                last_type3.append(lt3)
                 pitcher_mlbam.append(pmlbam)
                 batter_mlbam.append(bmlbam)
                 labels.append(label)
@@ -93,6 +101,10 @@ class PitchesDataset(Dataset):
         self.context = torch.tensor(context, dtype=torch.long)
         self.last_call = torch.tensor(last_call, dtype=torch.long)
         self.last_type = torch.tensor(last_type, dtype=torch.long)
+        self.last_call2 = torch.tensor(last_call2, dtype=torch.long)
+        self.last_type2 = torch.tensor(last_type2, dtype=torch.long)
+        self.last_call3 = torch.tensor(last_call3, dtype=torch.long)
+        self.last_type3 = torch.tensor(last_type3, dtype=torch.long)
         self.pitcher_mlbam = torch.tensor(pitcher_mlbam, dtype=torch.long)
         self.pitcher_idx = torch.zeros(len(labels), dtype=torch.long)
         self.batter_mlbam = torch.tensor(batter_mlbam, dtype=torch.long)
@@ -105,6 +117,10 @@ class PitchesDataset(Dataset):
             "context": self.context,
             "last_call": self.last_call,
             "last_type": self.last_type,
+            "last_call2": self.last_call2,
+            "last_type2": self.last_type2,
+            "last_call3": self.last_call3,
+            "last_type3": self.last_type3,
             "pitcher_mlbam": self.pitcher_mlbam,
             "batter_mlbam": self.batter_mlbam,
             "labels": self.labels,
@@ -115,6 +131,10 @@ class PitchesDataset(Dataset):
         self.context = blob["context"]
         self.last_call = blob["last_call"]
         self.last_type = blob["last_type"]
+        self.last_call2 = blob["last_call2"]
+        self.last_type2 = blob["last_type2"]
+        self.last_call3 = blob["last_call3"]
+        self.last_type3 = blob["last_type3"]
         self.pitcher_mlbam = blob["pitcher_mlbam"]
         self.batter_mlbam = blob["batter_mlbam"]
         self.labels = blob["labels"]
@@ -126,6 +146,10 @@ class PitchesDataset(Dataset):
         self.context = self.context[mask]
         self.last_call = self.last_call[mask]
         self.last_type = self.last_type[mask]
+        self.last_call2 = self.last_call2[mask]
+        self.last_type2 = self.last_type2[mask]
+        self.last_call3 = self.last_call3[mask]
+        self.last_type3 = self.last_type3[mask]
         self.pitcher_mlbam = self.pitcher_mlbam[mask]
         self.pitcher_idx = self.pitcher_idx[mask]
         self.batter_mlbam = self.batter_mlbam[mask]
@@ -160,6 +184,10 @@ class PitchesDataset(Dataset):
         sub.context = self.context[mask]
         sub.last_call = self.last_call[mask]
         sub.last_type = self.last_type[mask]
+        sub.last_call2 = self.last_call2[mask]
+        sub.last_type2 = self.last_type2[mask]
+        sub.last_call3 = self.last_call3[mask]
+        sub.last_type3 = self.last_type3[mask]
         sub.pitcher_mlbam = self.pitcher_mlbam[mask]
         sub.pitcher_idx = self.pitcher_idx[mask]
         sub.batter_idx = self.batter_idx[mask]
@@ -175,6 +203,10 @@ class PitchesDataset(Dataset):
             "context": self.context[idx],
             "last_call": self.last_call[idx],
             "last_type": self.last_type[idx],
+            "last_call2": self.last_call2[idx],
+            "last_type2": self.last_type2[idx],
+            "last_call3": self.last_call3[idx],
+            "last_type3": self.last_type3[idx],
             "pitcher_idx": self.pitcher_idx[idx],
             "batter_idx": self.batter_idx[idx]
         }, self.labels[idx]
