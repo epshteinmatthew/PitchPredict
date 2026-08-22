@@ -66,5 +66,5 @@ def read_root():
 
 @app.post("/predict/")
 def read_item(at_bat: AtBat):
-    return predict_situation(at_bat.model_dump(), stuff['vocabs'], stuff['TYPE_TO_ID'], stuff['CALL_TO_ID'], stuff['pitcher_to_idx'], stuff['unk_pitcher'], stuff['batter_to_idx'], stuff['unk_batter'], smean, sstd, stuff['ID_TO_TYPE'], model)
+    return predict_situation(at_bat.model_dump(), stuff['vocabs'], stuff['type_to_id'], stuff['call_to_id'], stuff['pitcher_to_idx'], stuff['unk_pitcher'], stuff['batter_to_idx'], stuff['unk_batter'], smean, sstd, stuff['id_to_type'], model)
 
