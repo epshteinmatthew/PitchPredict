@@ -65,8 +65,8 @@ class PitchModel(nn.Module):
         emb_throws = self.p_throws_embed(x["context"][:, 5])
         emb_stand = self.stand_embed(x["context"][:, 6])
 
-        emb_balls = self.balls_embed(x["context"][:, 7]) * 3
-        emb_strikes = self.strikes_embed(x["context"][:, 8]) * 3
+        emb_balls = self.balls_embed(x["context"][:, 7])
+        emb_strikes = self.strikes_embed(x["context"][:, 8])
 
         emb_last_call = self.last_call_embed(x["last_call"])
         emb_last_type = self.last_type_embed(x["last_type"])
