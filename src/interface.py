@@ -87,13 +87,13 @@ def test_loop(dataset, model, loss_fn, split="Val"):
 
 def predict_situation(situation, vocabs, TYPE_TO_ID, CALL_TO_ID, pitcher_to_idx, unk_pitcher, batter_to_idx, unk_batter , mean, std, ID_TO_TYPE, model):
         """situation uses human field names; numeric fields are standardized with train mean/std."""
-        calls = [CALL_TO_ID[c] for c in situation.get("calls_so_far", [])]
-        types = [TYPE_TO_ID[t] for t in situation.get("types_so_far", [])]
+        calls = situation.get("pitch_calls_so_far")
+        types = situation.get("pitch_types_so_far")
         balls, strikes = count_from_calls(calls)
         mlbam = situation.get("pitcher_id", EVAL_PITCHER)
         bmlbam = situation.get("batter_id", EVAL_BATTER)
-        pitcher_idx = pitcher_to_idx.get(mlbam, unk_pitcher)
-        batter_idx = batter_to_idx.get(bmlbam, unk_batter)
+        pitcher_idx = pitcher_to_idx.get(str(mlbam), unk_pitcher)
+        batter_idx = batter_to_idx.get(str(bmlbam), unk_batter)
 
         numeric = torch.tensor([
             situation["batter_avg"],

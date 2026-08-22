@@ -8,11 +8,12 @@ from training import PAD_CALL, PAD_TYPE
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 print(f"Using {device} device")
 
+
 class PitchModel(nn.Module):
     def __init__(self, n_classes, n_pitchers, n_batters):
         super().__init__()
 
-        self.pitcher_embed = nn.Embedding(num_embeddings=n_pitchers, embedding_dim=16)
+        self.pitcher_embed = nn.Embedding(num_embeddings=n_pitchers, embedding_dim=32)
         self.batter_embed = nn.Embedding(num_embeddings=n_batters, embedding_dim=16)
         self.p_throws_embed = nn.Embedding(num_embeddings=2, embedding_dim=2)
         self.half_embed = nn.Embedding(num_embeddings=2, embedding_dim=2)
@@ -37,7 +38,7 @@ class PitchModel(nn.Module):
         self.last_type3_embed = nn.Embedding(num_embeddings=19, embedding_dim=4, padding_idx=PAD_TYPE)
 
         # 10 numeric + pitcher 16 + 7 context*2 + last_call 4 + last_type 4
-        total_dims = 8 + 16 +16 + 2 * 7 + 16 + 16
+        total_dims = 8 + 32 +16 + 2 * 7 + 16 + 16
 
         # LSTM processes merged step features: (4 call dims + 4 type dims = 8 inputs per step)
         self.seq_lstm = nn.LSTM(
@@ -46,17 +47,17 @@ class PitchModel(nn.Module):
 
         self.dropout = nn.Dropout(0.0)
 
-        self.input_norm = nn.LayerNorm(total_dims)
         self.reduce_dims = nn.Linear(total_dims, 64)
 
         self.linear_relu_stack = nn.Sequential(
-            nn.ReLU(),
             nn.LayerNorm(64),
+            nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.LayerNorm(32)
+            nn.LayerNorm(32),
+            nn.ReLU()
         )
+
         self.output_dims = nn.Linear(32, n_classes)
 
     def forward(self, x):
@@ -79,12 +80,12 @@ class PitchModel(nn.Module):
         emb_last_type2 = self.last_type2_embed(x["last_type2"])
         emb_last_call3 = self.last_call3_embed(x["last_call3"])
         emb_last_type3 = self.last_type3_embed(x["last_type3"])
-
-        seq_calls = torch.stack([emb_last_call3, emb_last_call2, emb_last_call], dim=1)
-        seq_types = torch.stack([emb_last_type3, emb_last_type2, emb_last_type], dim=1)
-        seq_input = torch.cat([seq_calls, seq_types], dim=2)
+        step3 = torch.cat([emb_last_call3, emb_last_type3], dim=-1) # t-3
+        step2 = torch.cat([emb_last_call2, emb_last_type2], dim=-1) # t-2
+        step1 = torch.cat([emb_last_call,  emb_last_type],  dim=-1) # t-1
+        seq_input = torch.stack([step3, step2, step1], dim=1)
         _, (hn, _) = self.seq_lstm(seq_input)
-        emb_sequence_summary = hn[-1] * 5
+        emb_sequence_summary = hn[-1]
 
         x = torch.cat([
             x["numeric"],
@@ -101,7 +102,6 @@ class PitchModel(nn.Module):
             emb_strikes,
             emb_sequence_summary
         ], dim=1)
-        x = self.input_norm(x)
         x = self.reduce_dims(x)
         x = self.linear_relu_stack(x)
         return self.output_dims(x)
