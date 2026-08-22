@@ -86,68 +86,67 @@ def test_loop(dataset, model, loss_fn, split="Val"):
 
 
 def predict_situation(situation, vocabs, TYPE_TO_ID, CALL_TO_ID, pitcher_to_idx, unk_pitcher, batter_to_idx, unk_batter , mean, std, ID_TO_TYPE, model):
+        """situation uses human field names; numeric fields are standardized with train mean/std."""
+        calls = [CALL_TO_ID[c] for c in situation.get("calls_so_far", [])]
+        types = [TYPE_TO_ID[t] for t in situation.get("types_so_far", [])]
+        balls, strikes = count_from_calls(calls)
+        mlbam = situation.get("pitcher_id", EVAL_PITCHER)
+        bmlbam = situation.get("batter_id", EVAL_BATTER)
+        pitcher_idx = pitcher_to_idx.get(mlbam, unk_pitcher)
+        batter_idx = batter_to_idx.get(bmlbam, unk_batter)
 
-    """situation uses human field names; numeric fields are standardized with train mean/std."""
-    calls = [CALL_TO_ID[c] for c in situation.get("calls_so_far", [])]
-    types = [TYPE_TO_ID[t] for t in situation.get("types_so_far", [])]
-    balls, strikes = count_from_calls(calls)
-    mlbam = situation.get("pitcher_id", EVAL_PITCHER)
-    bmlbam = situation.get("batter_id", EVAL_BATTER)
-    pitcher_idx = pitcher_to_idx.get(mlbam, unk_pitcher)
-    batter_idx = batter_to_idx.get(bmlbam, unk_batter)
+        numeric = torch.tensor([
+            situation["batter_avg"],
+            situation["batter_obp"],
+            situation["batter_slg"],
+            situation["offense_score"],
+            situation["defense_score"],
+            situation["inning"],
+            situation["at_bat_number"],
+            situation["pitch_number"]
+        ], dtype=torch.float32)
+        numeric = (numeric - mean) / std.clamp_min(1e-6)
 
-    numeric = torch.tensor([
-        situation["batter_avg"],
-        situation["batter_obp"],
-        situation["batter_slg"],
-        situation["offense_score"],
-        situation["defense_score"],
-        situation["inning"],
-        situation["at_bat_number"],
-        situation["pitch_number"],
-        balls,
-        strikes,
-    ], dtype=torch.float32)
-    numeric = (numeric - mean) / std.clamp_min(1e-6)
+        batch = {
+            "numeric": numeric.unsqueeze(0),
+            "context": torch.tensor([[
+                situation["outs"],
+                situation["on_1b"],
+                situation["on_2b"],
+                situation["on_3b"],
+                situation["inning_half"],  # 0=Top, 1=Bot
+                situation["p_throws"],  # 0=R, 1=L
+                situation["stand"],  # 0=R, 1=L
+                balls,
+                strikes,
+            ]], dtype=torch.long),
+            "last_call": torch.tensor([calls[-1] if calls else PAD_CALL], dtype=torch.long),
+            "last_type": torch.tensor([types[-1] if types else PAD_TYPE], dtype=torch.long),
+            "last_call2": torch.tensor([calls[-2] if len(calls) > 1 else PAD_CALL], dtype=torch.long),
+            "last_type2": torch.tensor([types[-2] if len(types) > 1 else PAD_TYPE], dtype=torch.long),
+            "last_call3": torch.tensor([calls[-3] if len(calls) > 2 else PAD_CALL], dtype=torch.long),
+            "last_type3": torch.tensor([types[-3] if len(types) > 2 else PAD_TYPE], dtype=torch.long),
+            "pitcher_idx": torch.tensor([pitcher_idx], dtype=torch.long),
+            "batter_idx": torch.tensor([batter_idx], dtype=torch.long),
+        }
 
-    batch = {
-        "numeric": numeric.unsqueeze(0),
-        "context": torch.tensor([[
-            situation["outs"],
-            situation["on_1b"],
-            situation["on_2b"],
-            situation["on_3b"],
-            situation["inning_half"],  # 0=Top, 1=Bot
-            situation["p_throws"],     # 0=R, 1=L
-            situation["stand"],        # 0=R, 1=L
-        ]], dtype=torch.long),
-        "last_call": torch.tensor([calls[-1] if calls else PAD_CALL], dtype=torch.long),
-        "last_type": torch.tensor([types[-1] if types else PAD_TYPE], dtype=torch.long),
-        "last_call2": torch.tensor([calls[-2] if len(calls) > 1 else PAD_CALL], dtype=torch.long),
-        "last_type2": torch.tensor([types[-2] if len(types) > 1 else PAD_TYPE], dtype=torch.long),
-        "last_call3": torch.tensor([calls[-3] if len(calls) > 2 else PAD_CALL], dtype=torch.long),
-        "last_type3": torch.tensor([types[-3] if len(types) > 2 else PAD_TYPE], dtype=torch.long),
-        "pitcher_idx": torch.tensor([pitcher_idx], dtype=torch.long),
-        "batter_idx": torch.tensor([batter_idx], dtype=torch.long),
-    }
+        model.eval()
+        with torch.no_grad():
+            logits = model(batch)
+            probs = torch.softmax(logits, dim=-1)[0]
 
-    model.eval()
-    with torch.no_grad():
-        logits = model(batch)
-        probs = torch.softmax(logits, dim=-1)[0]
-
-    ranked = sorted(
-        ((ID_TO_TYPE.get(i, str(i)), float(probs[i])) for i in range(len(probs))),
-        key=lambda x: -x[1],
-    )
-    last_type_name = ID_TO_TYPE.get(types[-1], "none") if types else "none"
-    id_to_call = {int(v): k for k, v in CALL_TO_ID.items()}
-    last_call_name = id_to_call.get(calls[-1], "none") if calls else "none"
-    print(f"Count: {balls}-{strikes}  |  last: {last_type_name} / {last_call_name}")
-    print(f"Best guess: {ranked[0][0]}  ({100 * ranked[0][1]:.1f}%)")
-    print("Likelihoods:")
-    for name, p in ranked:
-        if p < 0.005:
-            continue
-        print(f"  {name:4s}  {100 * p:5.1f}%")
-    return ranked
+        ranked = sorted(
+            ((ID_TO_TYPE.get(i, str(i)), float(probs[i])) for i in range(len(probs))),
+            key=lambda x: -x[1],
+        )
+        last_type_name = ID_TO_TYPE.get(types[-1], "none") if types else "none"
+        id_to_call = {int(v): k for k, v in CALL_TO_ID.items()}
+        last_call_name = id_to_call.get(calls[-1], "none") if calls else "none"
+        print(f"Count: {balls}-{strikes}  |  last: {last_type_name} / {last_call_name}")
+        print(f"Best guess: {ranked[0][0]}  ({100 * ranked[0][1]:.1f}%)")
+        print("Likelihoods:")
+        for name, p in ranked:
+            if p < 0.005:
+                continue
+            print(f"  {name:4s}  {100 * p:5.1f}%")
+        return ranked
