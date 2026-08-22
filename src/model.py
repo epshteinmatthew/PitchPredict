@@ -44,13 +44,18 @@ class PitchModel(nn.Module):
             input_size=8, hidden_size=16, num_layers=1, batch_first=True
         )
 
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.0)
 
+        self.input_norm = nn.LayerNorm(total_dims)
         self.reduce_dims = nn.Linear(total_dims, 64)
+
         self.linear_relu_stack = nn.Sequential(
             nn.ReLU(),
+            nn.LayerNorm(64),
+            nn.Dropout(0.2),
             nn.Linear(64, 32),
             nn.ReLU(),
+            nn.LayerNorm(32)
         )
         self.output_dims = nn.Linear(32, n_classes)
 
@@ -79,7 +84,7 @@ class PitchModel(nn.Module):
         seq_types = torch.stack([emb_last_type3, emb_last_type2, emb_last_type], dim=1)
         seq_input = torch.cat([seq_calls, seq_types], dim=2)
         _, (hn, _) = self.seq_lstm(seq_input)
-        emb_sequence_summary = hn[-1]
+        emb_sequence_summary = hn[-1] * 5
 
         x = torch.cat([
             x["numeric"],
@@ -96,6 +101,7 @@ class PitchModel(nn.Module):
             emb_strikes,
             emb_sequence_summary
         ], dim=1)
+        x = self.input_norm(x)
         x = self.reduce_dims(x)
         x = self.linear_relu_stack(x)
         return self.output_dims(x)
