@@ -92,8 +92,9 @@ def predict_situation(situation, vocabs, TYPE_TO_ID, CALL_TO_ID, pitcher_to_idx,
         balls, strikes = count_from_calls(calls)
         mlbam = situation.get("pitcher_id", EVAL_PITCHER)
         bmlbam = situation.get("batter_id", EVAL_BATTER)
-        pitcher_idx = pitcher_to_idx.get(str(mlbam), unk_pitcher)
-        batter_idx = batter_to_idx.get(str(bmlbam), unk_batter)
+        #honestly im not sure how well this works but we KNOW 0 won't be out of range. need to think of a better solution
+        pitcher_idx = pitcher_to_idx.get(str(mlbam), 0)
+        batter_idx = batter_to_idx.get(str(bmlbam), 0)
 
         numeric = torch.tensor([
             situation["batter_avg"],
