@@ -45,8 +45,6 @@ class PitchModel(nn.Module):
             input_size=8, hidden_size=16, num_layers=1, batch_first=True
         )
 
-        self.dropout = nn.Dropout(0.0)
-
         self.reduce_dims = nn.Linear(total_dims, 64)
 
         self.linear_relu_stack = nn.Sequential(
